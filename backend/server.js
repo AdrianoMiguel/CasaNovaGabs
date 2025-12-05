@@ -10,8 +10,6 @@ const User = require('./models/User');
 const app = express();
 
 // CORREÇÃO ESSENCIAL 1: Informa ao Express que está atrás de um proxy (Fly.io).
-// Isso é crucial para que o Express reconheça a conexão como HTTPS e permita
-// que o cookie.secure: true funcione.
 app.set('trust proxy', 1); 
 
 // Middlewares
@@ -26,12 +24,10 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  // Não precisamos mais de 'proxy: true' na sessão se usarmos app.set('trust proxy', 1)
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
     httpOnly: true,
-    // CORREÇÃO ESSENCIAL 2: Para Cross-site (Vercel -> Fly.io) em HTTPS,
-    // *ambos* sameSite: 'none' e secure: true são obrigatórios.
+    // CORREÇÃO ESSENCIAL 2: sameSite: 'none' e secure: true para Cross-site (Vercel -> Fly.io) em HTTPS.
     secure: process.env.NODE_ENV === 'production' ? true : 'auto', 
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', 
     domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
@@ -100,13 +96,19 @@ app.use('/api/gifts', require('./routes/gifts'));
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
+  res.json({ status: 'OK', message: 'Servidor funcionando' });
 });
 
-// Outras rotas...
-app.get('/api/auth/current-user', (req, res) => {
+// ROTA ATUALIZADA: Agora popula o presente escolhido se o usuário estiver logado
+app.get('/api/auth/current-user', async (req, res) => {
   if (req.user) {
-    res.json({ user: req.user });
+    // Carrega o nome do presente escolhido usando populate
+    const userWithGift = await req.user.populate({
+      path: 'chosenGift',
+      select: 'name' // Seleciona apenas o nome do presente
+    });
+
+    res.json({ user: userWithGift });
   } else {
     res.json({ user: null });
   }

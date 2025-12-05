@@ -21,13 +21,16 @@ const Login = () => {
       <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
           <Gift className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-          
-          {/* TÍTULO NOVO */}
+          <h2 className="text-lg font-semibold text-gray-700 mb-2">
+              CHÁ DE CASA NOVA<br/>
+              Cintia & Gabriel
+            </h2>
+
           <h1 className="text-2xl font-bold text-gray-800 mb-4">
-            Venha comemorar com a gente essa nova fase! 💍
+            Venha comemorar com a gente essa nova fase!
           </h1>
 
-          {/* NOVO CONTEÚDO */}
+
           <div className="text-left bg-gray-50 p-4 rounded-lg shadow-inner">
             <h2 className="text-lg font-semibold text-gray-700 mb-2">
               ONDE?
@@ -40,7 +43,8 @@ const Login = () => {
               QUANDO?
             </h2>
             <p className="text-gray-600">
-              21 de Dezembro de 2025 - Domingo
+              21 de Dezembro de 2025 - Domingo <br/>
+              A partir das 12h00
             </p>
           </div>
         </div>
