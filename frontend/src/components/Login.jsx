@@ -11,15 +11,17 @@ const Login = () => {
     // Verifica parâmetros da URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
-    const authSuccess = urlParams.get('auth');
+    const userId = urlParams.get('user_id');
     
-    // Se autenticação foi bem sucedida, recarrega a página para pegar o usuário
-    if (authSuccess === 'success') {
-      console.log('✅ Autenticação bem-sucedida, recarregando...');
+    // CORREÇÃO IOS: Se veio com user_id, força reload para estabelecer sessão
+    if (userId) {
+      console.log('✅ URL Handoff detectado (iOS), recarregando...');
       // Remove o parâmetro da URL
       window.history.replaceState({}, document.title, window.location.pathname);
       // Força reload para pegar a sessão
-      window.location.reload();
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
       return;
     }
     

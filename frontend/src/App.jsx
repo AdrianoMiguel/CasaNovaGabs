@@ -3,57 +3,43 @@ import Login from './components/Login';
 import GiftList from './components/GiftList';
 import AdminPanel from './components/AdminPanel';
 import AlreadyChosen from './components/AlreadyChosen';
-import { getCurrentUser, logout } from './services/api';
+import { getCurrentUser } from './services/api';
 import './App.css';
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    // CORREÇÃO iOS: Detecta URL Handoff e força nova verificação
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id');
+    
+    if (userId) {
+      console.log('✅ URL Handoff detectado, forçando checkAuth...');
+      // Limpa a URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
+    checkAuth();
+  }, []);
+
   const checkAuth = async () => {
     try {
       const response = await getCurrentUser();
       if (response.data.user) {
+        console.log('✅ Usuário recuperado:', response.data.user.email);
         setUser(response.data.user);
       }
     } catch (error) {
       console.error('Erro ao verificar autenticação:', error);
-      setUser(null);
     } finally {
       setLoading(false);
     }
   };
-  
-  // LÓGICA DE CORREÇÃO PARA IOS/SAFARI
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const userIdFromUrl = urlParams.get('user_id');
 
-    // Verifica se a URL contém o ID do usuário (vindo do callback do Google)
-    if (userIdFromUrl) {
-      console.log('✅ URL Handoff detectado. Forçando checkAuth...');
-      
-      // 1. Limpa o parâmetro da URL imediatamente
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // 2. Força a verificação da sessão
-      checkAuth();
-      return;
-    }
-    
-    // Se não houver URL Handoff, roda o checkAuth normal
-    checkAuth();
-  }, []);
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
+  const handleLogout = () => {
     setUser(null);
-    // Recarrega a página para limpar qualquer estado e garantir que o cookie foi apagado
-    window.location.reload(); 
   };
 
   if (loading) {
@@ -78,15 +64,17 @@ function App() {
   if (!user) {
     return <Login />;
   }
-  
+
   if (user.isAdmin) {
     return <AdminPanel user={user} onLogout={handleLogout} />;
   }
 
+  // Se o usuário já escolheu um presente, mostra a tela de presente escolhido
   if (user.hasChosenGift) {
     return <AlreadyChosen user={user} onLogout={handleLogout} />;
   }
-  
+
+  // Se não escolheu ainda, mostra a lista de presentes
   return <GiftList user={user} onLogout={handleLogout} />;
 }
 
