@@ -5,34 +5,71 @@ const Login = () => {
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [debugInfo, setDebugInfo] = useState(null);
   
   useEffect(() => {
-    // Verifica se há erro na URL (vindo do redirect)
+    // Verifica parâmetros da URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
+    const authSuccess = urlParams.get('auth');
     
-    if (error === 'session') {
-      setErrorMessage('Erro ao criar sessão. Tente novamente.');
-      setIsLoading(false);
-    } else if (error === 'callback') {
-      setErrorMessage('Erro na autenticação. Tente novamente.');
-      setIsLoading(false);
+    // Se autenticação foi bem sucedida, recarrega a página para pegar o usuário
+    if (authSuccess === 'success') {
+      console.log('✅ Autenticação bem-sucedida, recarregando...');
+      // Remove o parâmetro da URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Força reload para pegar a sessão
+      window.location.reload();
+      return;
     }
     
-    // Limpa o erro da URL
+    // Trata erros
     if (error) {
+      const errorMessages = {
+        'auth_failed': 'Falha na autenticação. Tente novamente.',
+        'session_regenerate': 'Erro ao criar sessão. Tente novamente.',
+        'login_failed': 'Erro ao fazer login. Tente novamente.',
+        'session_save': 'Erro ao salvar sessão. Tente novamente.',
+        'callback_exception': 'Erro no processo de autenticação.',
+        'session': 'Erro ao criar sessão. Tente novamente.',
+        'callback': 'Erro na autenticação. Tente novamente.'
+      };
+      
+      setErrorMessage(errorMessages[error] || 'Erro desconhecido. Tente novamente.');
+      setIsLoading(false);
+      
+      // Remove o erro da URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
   
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setErrorMessage('');
     
-    // Adiciona um timeout de segurança
-    setTimeout(() => {
+    try {
+      // CORREÇÃO: Abre o Google OAuth na mesma janela (melhor para mobile)
+      console.log('🔐 Iniciando autenticação Google...');
       window.location.href = `${API_URL}/auth/google`;
-    }, 100);
+    } catch (error) {
+      console.error('❌ Erro ao iniciar login:', error);
+      setErrorMessage('Erro ao iniciar login. Tente novamente.');
+      setIsLoading(false);
+    }
+  };
+
+  // Debug: mostrar informações técnicas (apenas em desenvolvimento)
+  const showDebugInfo = async () => {
+    try {
+      const response = await fetch(`${API_URL}/auth/status`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      setDebugInfo(data);
+      console.log('Debug Info:', data);
+    } catch (error) {
+      console.error('Erro ao buscar debug info:', error);
+    }
   };
 
   return (
@@ -49,9 +86,9 @@ const Login = () => {
         <div className="text-center mb-8">
           <Gift className="w-16 h-16 text-purple-600 mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-gray-700 mb-2">
-              CHÁ DE CASA NOVA<br/>
-              Cintia & Gabriel
-            </h2>
+            CHÁ DE CASA NOVA<br/>
+            Cintia & Gabriel
+          </h2>
 
           <h1 className="text-2xl font-bold text-gray-800 mb-4">
             Venha comemorar com a gente essa nova fase!
@@ -77,7 +114,15 @@ const Login = () => {
 
         {errorMessage && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+            <p className="text-sm text-red-600 text-center font-medium">
+              {errorMessage}
+            </p>
+            <button
+              onClick={() => setErrorMessage('')}
+              className="text-xs text-red-500 underline mt-2 w-full"
+            >
+              Dispensar
+            </button>
           </div>
         )}
 
@@ -89,7 +134,7 @@ const Login = () => {
           {isLoading ? (
             <>
               <div className="w-6 h-6 border-3 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-              Carregando...
+              Aguarde...
             </>
           ) : (
             <>
@@ -118,10 +163,27 @@ const Login = () => {
 
         <p className="text-sm text-gray-500 mt-6 text-center">
           {isLoading 
-            ? 'Redirecionando para o Google...' 
+            ? 'Aguarde enquanto redirecionamos você...' 
             : 'Clique acima para entrar e escolher seu presente.'
           }
         </p>
+
+        {/* Debug button - apenas para desenvolvimento */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4">
+            <button
+              onClick={showDebugInfo}
+              className="text-xs text-gray-400 underline w-full"
+            >
+              Debug Info
+            </button>
+            {debugInfo && (
+              <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-40">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
