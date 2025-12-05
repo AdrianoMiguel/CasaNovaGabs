@@ -21,10 +21,13 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
+  proxy: true, // Importante para Fly.io
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production'
+    secure: process.env.NODE_ENV === 'production', // HTTPS em produção
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Para CORS em produção
+    domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
   }
 }));
 
@@ -96,7 +99,7 @@ app.get('/api/health', (req, res) => {
 
 // Iniciar servidor
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📱 Frontend: ${process.env.FRONTEND_URL}`);
 });
