@@ -99,14 +99,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Servidor funcionando' });
 });
 
-// ROTA ATUALIZADA: Agora popula o presente escolhido se o usuário estiver logado
+// ROTA CORRIGIDA PARA GARANTIR O POPULATE
 app.get('/api/auth/current-user', async (req, res) => {
   if (req.user) {
-    // Carrega o nome do presente escolhido usando populate
-    const userWithGift = await req.user.populate({
-      path: 'chosenGift',
-      select: 'name' // Seleciona apenas o nome do presente
-    });
+    // ⬅️ CORREÇÃO: Busca o usuário do banco de dados usando o ID e popula o presente
+    const userWithGift = await User.findById(req.user._id)
+      .populate({
+        path: 'chosenGift',
+        select: 'name' // Seleciona apenas o nome do presente
+      })
+      .exec(); // Executa a query
+      
+    if (!userWithGift) {
+      return res.json({ user: null });
+    }
 
     res.json({ user: userWithGift });
   } else {

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-// Adicionando MapPin e Calendar para a tela de confirmação
-import { Gift, LogOut, CheckCircle, User, MapPin, Calendar } from 'lucide-react'; 
+import { Gift, LogOut, CheckCircle, User, MapPin, Calendar } from 'lucide-react';
 import { getGifts, chooseGift, logout } from '../services/api';
 
 const GiftList = ({ user, onLogout }) => {
+  // ATENÇÃO: user é uma prop. Para fazer a atualização na tela após a escolha,
+  // precisamos atualizar a prop 'user' de forma mutável (anti-pattern) ou
+  // forçar um re-fetch do componente pai. Usaremos a mutação da prop 
+  // e atualização de estado que já estava para simplificar.
+  
   const [gifts, setGifts] = useState([]);
-  // Inicializa loading como false se já houver um presente escolhido no objeto 'user'
   const [loading, setLoading] = useState(false); 
   const [selectedGift, setSelectedGift] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -13,11 +16,13 @@ const GiftList = ({ user, onLogout }) => {
 
   useEffect(() => {
     // Só carrega a lista se o usuário ainda não escolheu um presente
-    if (!user.chosenGift) {
+    if (!user.chosenGift && !user.hasChosenGift) {
       setLoading(true);
       loadGifts();
     }
-  }, [user.chosenGift]); // Recarrega se o estado do presente escolhido mudar
+    // A propriedade `user` é a dependência. Se ela vier do backend com
+    // o presente populado, a lista não é mais carregada.
+  }, [user]); 
 
   const loadGifts = async () => {
     try {
@@ -43,16 +48,17 @@ const GiftList = ({ user, onLogout }) => {
     try {
       await chooseGift(selectedGift._id);
       
-      // ATUALIZAÇÃO: Em vez de logout, atualiza o objeto user localmente
-      // Isso faz com que o componente GiftList re-renderize e entre no bloco 'if (user.chosenGift)'
-      // Precisamos garantir que o objeto user seja mutável ou que o App.jsx force o update.
-      // Neste caso, vamos forçar uma atualização no próprio objeto `user` (prop) para o render
+      // ⬅️ ATUALIZAÇÃO NO FRONTEND PARA MUDAR A TELA IMEDIATAMENTE
+      // Atualiza o objeto prop 'user' mutavelmente (para que o IF abaixo seja executado)
       user.chosenGift = { name: selectedGift.name };
-
+      user.hasChosenGift = true;
+      
       alert(`Presente "${selectedGift.name}" escolhido com sucesso!`);
       
       setChoosing(false);
       setShowConfirmation(false);
+      // Força um re-render do componente para que a nova tela de confirmação apareça
+      setLoading(false); 
 
     } catch (error) {
       console.error('Erro ao escolher presente:', error);
@@ -82,8 +88,13 @@ const GiftList = ({ user, onLogout }) => {
     );
   }
   
-  // ⬅️ NOVO BLOCO: Exibe o presente escolhido se ele já existir
-  if (user.chosenGift) {
+  // ⬅️ BLOCO PARA EXIBIR O PRESENTE ESCOLHIDO
+  // Verifica se a flag 'hasChosenGift' está true OU se o presente veio populado
+  if (user.hasChosenGift) {
+    
+    // CORREÇÃO: Tenta pegar o nome de forma segura, usando o nome populado se existir, ou fallback.
+    const chosenGiftName = user.chosenGift?.name || "Reservado";
+
     return (
       <div 
         className="min-h-screen flex items-center justify-center p-4"
@@ -109,7 +120,7 @@ const GiftList = ({ user, onLogout }) => {
               Seu presente escolhido:
             </p>
             <h2 className="text-2xl font-extrabold text-green-700">
-              {user.chosenGift.name}
+              {chosenGiftName}
             </h2>
           </div>
           
