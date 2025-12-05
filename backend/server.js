@@ -9,6 +9,11 @@ const User = require('./models/User');
 
 const app = express();
 
+// CORREÇÃO ESSENCIAL 1: Informa ao Express que está atrás de um proxy (Fly.io).
+// Isso é crucial para que o Express reconheça a conexão como HTTPS e permita
+// que o cookie.secure: true funcione.
+app.set('trust proxy', 1); 
+
 // Middlewares
 app.use(express.json());
 app.use(cors({
@@ -21,12 +26,14 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  proxy: true, // Importante para Fly.io
+  // Não precisamos mais de 'proxy: true' na sessão se usarmos app.set('trust proxy', 1)
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // HTTPS em produção
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Para CORS em produção
+    // CORREÇÃO ESSENCIAL 2: Para Cross-site (Vercel -> Fly.io) em HTTPS,
+    // *ambos* sameSite: 'none' e secure: true são obrigatórios.
+    secure: process.env.NODE_ENV === 'production' ? true : 'auto', 
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', 
     domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
   }
 }));
@@ -43,7 +50,6 @@ passport.use(new GoogleStrategy({
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
-      // Verifica se usuário já existe
       let user = await User.findOne({ googleId: profile.id });
       
       if (user) {
@@ -94,12 +100,22 @@ app.use('/api/gifts', require('./routes/gifts'));
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Servidor funcionando' });
+  res.status(200).send('OK');
 });
 
-// Iniciar servidor
+// Outras rotas...
+app.get('/api/auth/current-user', (req, res) => {
+  if (req.user) {
+    res.json({ user: req.user });
+  } else {
+    res.json({ user: null });
+  }
+});
+
+
+// Servidor
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📱 Frontend: ${process.env.FRONTEND_URL}`);
 });
