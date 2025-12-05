@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import GiftList from './components/GiftList';
 import AdminPanel from './components/AdminPanel';
+import AlreadyChosen from './components/AlreadyChosen';
 import { getCurrentUser } from './services/api';
 import './App.css';
 
@@ -57,6 +58,12 @@ function App() {
     return <AdminPanel user={user} onLogout={handleLogout} />;
   }
 
+  // Se o usuário já escolheu um presente, mostra a tela de presente escolhido
+  if (user.hasChosenGift) {
+    return <AlreadyChosen user={user} onLogout={handleLogout} />;
+  }
+
+  // Se não escolheu ainda, mostra a lista de presentes
   return <GiftList user={user} onLogout={handleLogout} />;
 }
 
