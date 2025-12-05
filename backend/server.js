@@ -4,50 +4,59 @@ const mongoose = require('mongoose');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
-const cors = require('cors');
-// ADICIONADO: Import do MongoStore
 const MongoStore = require('connect-mongo');
+const cors = require('cors');
 const User = require('./models/User');
 
 const app = express();
 
-// CORREÇÃO 1: Trust proxy (CORRETO)
+// Trust proxy
 app.set('trust proxy', 1);
 
 // Middlewares
 app.use(express.json());
 
-// CORREÇÃO 2: CORS PERMISSIVO, MAS SEGURO
+// CORREÇÃO CRÍTICA iOS: CORS deve processar antes de tudo
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // Permite apenas a URL do seu frontend
+  origin: process.env.FRONTEND_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  exposedHeaders: ['Set-Cookie']
 }));
 
-// CORREÇÃO 3: Sessão com configurações otimizadas para iOS
+// Conectar ao MongoDB ANTES da sessão
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ MongoDB conectado'))
+  .catch(err => console.error('❌ Erro ao conectar MongoDB:', err));
+
+// CORREÇÃO iOS: Configuração de sessão mais agressiva
 app.use(session({
   secret: process.env.SESSION_SECRET,
-  resave: false,
+  resave: true, // MUDADO: true força salvar a sessão sempre
   saveUninitialized: false,
-  name: 'sessionId', // Nome customizado do cookie
-
-  // CONFIGURAÇÃO FALTANTE DO MONGOSTORE
+  
   store: MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
-    collectionName: 'sessions', 
-    ttl: 7 * 24 * 60 * 60 * 1000, 
+    touchAfter: 24 * 3600,
+    crypto: {
+      secret: process.env.SESSION_SECRET
+    }
   }),
-
+  
+  name: 'sessionId',
   cookie: {
-    maxAge: 7 * 24 * 60 * 60 * 1000, 
-    httpOnly: true, 
-    // OBRIGATÓRIO PARA iOS/Safari em Produção
-    secure: process.env.NODE_ENV === 'production', 
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/', 
+    path: '/',
+    // CRÍTICO iOS: Remove domain para funcionar melhor
   },
-  // REMOVIDO: Removemos 'proxy: true' para evitar conflito com app.set('trust proxy', 1)
+  
+  // CRÍTICO iOS: Força rolling session
+  rolling: true, // Renova o cookie a cada requisição
+  proxy: true
 }));
 
 // Passport
@@ -59,7 +68,7 @@ passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.GOOGLE_CALLBACK_URL,
-    proxy: true // Mantém proxy aqui para o OAuth, que é padrão no Passport
+    proxy: true
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -69,7 +78,6 @@ passport.use(new GoogleStrategy({
         return done(null, user);
       }
       
-      // Cria novo usuário
       const adminEmails = process.env.ADMIN_EMAIL.split(',').map(e => e.trim());
       const isAdmin = adminEmails.includes(profile.emails[0].value);
       
@@ -102,17 +110,16 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Conectar ao MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB conectado');
-    console.log('💾 MongoStore: ativado');
-  })
-  .catch(err => console.error('❌ Erro ao conectar MongoDB:', err));
-
-// CORREÇÃO 4: Middleware de debug para sessões
+// Middleware de debug
 app.use((req, res, next) => {
-  // Removido logs verbosos para evitar poluição, mantendo apenas o log do auth.js
+  console.log('📱 Request:', {
+    method: req.method,
+    path: req.path,
+    hasSession: !!req.session,
+    sessionID: req.sessionID,
+    isAuth: req.isAuthenticated?.() || false,
+    cookies: req.headers.cookie ? 'presente' : 'ausente'
+  });
   next();
 });
 
@@ -120,39 +127,43 @@ app.use((req, res, next) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gifts', require('./routes/gifts'));
 
-// Rota de teste
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
-    status: 'OK', 
-    message: 'Servidor funcionando',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
     session: {
       hasSession: !!req.session,
       sessionID: req.sessionID,
-      isAuthenticated: req.isAuthenticated ? req.isAuthenticated() : false
+      isAuthenticated: req.isAuthenticated?.() || false
     }
   });
 });
 
-// Rota de debug de sessão
+// Debug de sessão
 app.get('/api/debug/session', (req, res) => {
   res.json({
     hasSession: !!req.session,
     sessionID: req.sessionID,
-    isAuthenticated: req.isAuthenticated(),
-    user: req.user ? { id: req.user._id, email: req.user.email } : null,
-    cookies: req.cookies,
+    isAuthenticated: req.isAuthenticated?.() || false,
+    user: req.user ? { 
+      id: req.user._id, 
+      email: req.user.email,
+      hasChosenGift: req.user.hasChosenGift 
+    } : null,
+    cookies: req.headers.cookie || 'nenhum',
     headers: {
-      cookie: req.get('cookie'),
       userAgent: req.get('user-agent'),
-      origin: req.get('origin')
+      origin: req.get('origin'),
+      referer: req.get('referer')
     }
   });
 });
 
-// Servidor
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📱 Frontend: ${process.env.FRONTEND_URL}`);
   console.log(`🔒 Modo: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`💾 MongoStore: ativado`);
 });

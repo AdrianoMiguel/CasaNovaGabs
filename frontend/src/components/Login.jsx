@@ -1,27 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { Gift } from 'lucide-react';
+import { getCurrentUser } from '../services/api';
 
 const Login = () => {
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [debugInfo, setDebugInfo] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
   
   useEffect(() => {
-    // Verifica parâmetros da URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
     const userId = urlParams.get('user_id');
     
-    // CORREÇÃO IOS: Se veio com user_id, força reload para estabelecer sessão
+    // CORREÇÃO iOS: Se veio com user_id, tenta verificar autenticação múltiplas vezes
     if (userId) {
-      console.log('✅ URL Handoff detectado (iOS), recarregando...');
-      // Remove o parâmetro da URL
+      console.log('✅ URL Handoff detectado, tentando recuperar sessão...');
       window.history.replaceState({}, document.title, window.location.pathname);
-      // Força reload para pegar a sessão
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
+      setIsLoading(true);
+      
+      // Tenta verificar a autenticação com delay progressivo
+      const checkAuthWithRetry = async (attempt = 0) => {
+        if (attempt >= 5) {
+          console.log('❌ Falha após 5 tentativas');
+          setIsLoading(false);
+          setErrorMessage('Não foi possível estabelecer a sessão. Tente novamente.');
+          return;
+        }
+        
+        try {
+          console.log(`🔄 Tentativa ${attempt + 1} de verificar sessão...`);
+          const response = await getCurrentUser();
+          
+          if (response.data.user) {
+            console.log('✅ Sessão estabelecida! Recarregando...');
+            window.location.reload();
+            return;
+          }
+          
+          // Se não autenticou, tenta novamente com delay crescente
+          const delay = (attempt + 1) * 500; // 500ms, 1s, 1.5s, 2s, 2.5s
+          console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
+          setTimeout(() => checkAuthWithRetry(attempt + 1), delay);
+          
+        } catch (error) {
+          console.error(`❌ Erro na tentativa ${attempt + 1}:`, error);
+          const delay = (attempt + 1) * 500;
+          setTimeout(() => checkAuthWithRetry(attempt + 1), delay);
+        }
+      };
+      
+      // Aguarda 300ms antes da primeira tentativa (dá tempo pro cookie ser setado)
+      setTimeout(() => checkAuthWithRetry(0), 300);
       return;
     }
     
@@ -29,49 +59,25 @@ const Login = () => {
     if (error) {
       const errorMessages = {
         'auth_failed': 'Falha na autenticação. Tente novamente.',
-        'session_regenerate': 'Erro ao criar sessão. Tente novamente.',
-        'login_failed': 'Erro ao fazer login. Tente novamente.',
         'session_save': 'Erro ao salvar sessão. Tente novamente.',
         'callback_exception': 'Erro no processo de autenticação.',
-        'session': 'Erro ao criar sessão. Tente novamente.',
-        'callback': 'Erro na autenticação. Tente novamente.'
       };
       
       setErrorMessage(errorMessages[error] || 'Erro desconhecido. Tente novamente.');
       setIsLoading(false);
-      
-      // Remove o erro da URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
   
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
     setIsLoading(true);
     setErrorMessage('');
+    console.log('🔐 Iniciando autenticação Google...');
     
-    try {
-      // CORREÇÃO: Abre o Google OAuth na mesma janela (melhor para mobile)
-      console.log('🔐 Iniciando autenticação Google...');
+    // Pequeno delay para garantir que o state foi atualizado
+    setTimeout(() => {
       window.location.href = `${API_URL}/auth/google`;
-    } catch (error) {
-      console.error('❌ Erro ao iniciar login:', error);
-      setErrorMessage('Erro ao iniciar login. Tente novamente.');
-      setIsLoading(false);
-    }
-  };
-
-  // Debug: mostrar informações técnicas (apenas em desenvolvimento)
-  const showDebugInfo = async () => {
-    try {
-      const response = await fetch(`${API_URL}/auth/status`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      setDebugInfo(data);
-      console.log('Debug Info:', data);
-    } catch (error) {
-      console.error('Erro ao buscar debug info:', error);
-    }
+    }, 100);
   };
 
   return (
@@ -136,7 +142,7 @@ const Login = () => {
           {isLoading ? (
             <>
               <div className="w-6 h-6 border-3 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-              Aguarde...
+              Estabelecendo sessão...
             </>
           ) : (
             <>
@@ -165,27 +171,10 @@ const Login = () => {
 
         <p className="text-sm text-gray-500 mt-6 text-center">
           {isLoading 
-            ? 'Aguarde enquanto redirecionamos você...' 
+            ? 'Aguarde, isso pode levar alguns segundos no iOS...' 
             : 'Clique acima para entrar e escolher seu presente.'
           }
         </p>
-
-        {/* Debug button - apenas para desenvolvimento */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-4">
-            <button
-              onClick={showDebugInfo}
-              className="text-xs text-gray-400 underline w-full"
-            >
-              Debug Info
-            </button>
-            {debugInfo && (
-              <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-40">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
