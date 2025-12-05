@@ -3,160 +3,131 @@ const passport = require('passport');
 const router = express.Router();
 const User = require('../models/User');
 
-// CORREÇÃO 1: Iniciar autenticação Google com configurações para mobile
+// Rota para iniciar autenticação Google
 router.get('/google',
   passport.authenticate('google', { 
     scope: ['profile', 'email'],
-    prompt: 'select_account', // Força seleção de conta
-    accessType: 'offline' // Garante token de refresh
+    prompt: 'select_account' // Força seleção de conta
   })
 );
 
-// CORREÇÃO 2: Callback otimizado com melhor tratamento
+// CORREÇÃO: Callback do Google com estratégia de correção para iOS/Safari
 router.get('/google/callback',
   passport.authenticate('google', { 
-    failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
+    failureRedirect: process.env.FRONTEND_URL,
     failureMessage: true
   }),
   async (req, res) => {
     try {
-      console.log('✅ Callback recebido:', {
+      console.log('✅ Autenticação bem-sucedida:', {
         userId: req.user._id,
         email: req.user.email,
-        sessionID: req.sessionID,
-        hasSession: !!req.session
+        sessionID: req.sessionID
       });
 
-      // IMPORTANTE: Força a regeneração da sessão para garantir persistência
-      req.session.regenerate((err) => {
-        if (err) {
-          console.error('❌ Erro ao regenerar sessão:', err);
-          return res.redirect(process.env.FRONTEND_URL + '?error=session_regenerate');
-        }
+      // ESTRATÉGIA DE CORREÇÃO PARA IOS/SAFARI (ITP):
+      // Retorna um HTML com JavaScript que tenta forçar o navegador a aceitar
+      // o cookie de sessão antes de redirecionar para o frontend.
+      
+      const successHtml = `
+        <html>
+          <head>
+            <title>Autenticação Concluída</title>
+          </head>
+          <body>
+            <script>
+              // 1. Tenta redirecionar a janela principal (funciona se for um popup/nova janela)
+              if (window.opener) {
+                window.opener.location.href = '${process.env.FRONTEND_URL}';
+                window.close();
+              }
+              
+              // 2. Redireciona a própria janela (para o fluxo normal de redirect)
+              window.location.href = '${process.env.FRONTEND_URL}';
+            </script>
+            Autenticação concluída. Redirecionando...
+          </body>
+        </html>
+      `;
 
-        // Re-loga o usuário na nova sessão
-        req.login(req.user, (err) => {
-          if (err) {
-            console.error('❌ Erro ao fazer login:', err);
-            return res.redirect(process.env.FRONTEND_URL + '?error=login_failed');
-          }
+      // Enviamos o HTML de sucesso. O Passport já setou o cookie de sessão.
+      res.setHeader('Content-Type', 'text/html');
+      res.send(successHtml);
 
-          // Salva a sessão antes de redirecionar
-          req.session.save((err) => {
-            if (err) {
-              console.error('❌ Erro ao salvar sessão:', err);
-              return res.redirect(process.env.FRONTEND_URL + '?error=session_save');
-            }
-            
-            console.log('💾 Sessão salva com sucesso:', {
-              sessionID: req.sessionID,
-              userId: req.user._id
-            });
-
-            // Redireciona com sucesso
-            res.redirect(process.env.FRONTEND_URL + '?auth=success');
-          });
-        });
-      });
     } catch (error) {
       console.error('❌ Erro no callback:', error);
-      res.redirect(process.env.FRONTEND_URL + '?error=callback_exception');
+      res.redirect(process.env.FRONTEND_URL + '?error=callback');
     }
   }
 );
 
-// CORREÇÃO 3: Current user com melhor logging e tratamento
+// Rota para obter usuário atual
 router.get('/current-user', async (req, res) => {
+  // Logs de debug úteis que confirmam o status da sessão
   console.log('🔍 Verificando usuário atual:', {
     hasSession: !!req.session,
     sessionID: req.sessionID,
-    isAuthenticated: req.isAuthenticated?.() || false,
-    userId: req.user?._id,
-    cookies: req.headers.cookie ? 'presente' : 'ausente'
+    isAuthenticated: req.isAuthenticated(),
+    userId: req.user?._id
   });
 
-  if (!req.isAuthenticated || !req.isAuthenticated()) {
-    console.log('❌ Usuário não autenticado');
-    return res.json({ user: null });
-  }
-
-  try {
-    const user = await User.findById(req.user._id)
-      .populate('chosenGift', 'name description')
-      .exec();
-    
-    if (!user) {
-      console.log('⚠️ Usuário não encontrado no banco:', req.user._id);
-      return res.json({ user: null });
-    }
-
-    console.log('✅ Usuário autenticado:', {
-      id: user._id,
-      email: user.email,
-      hasChosenGift: user.hasChosenGift,
-      isAdmin: user.isAdmin
-    });
-
-    res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        photo: user.photo,
-        isAdmin: user.isAdmin,
-        hasChosenGift: user.hasChosenGift,
-        chosenGift: user.chosenGift
+  if (req.isAuthenticated()) {
+    try {
+      // Usa findById e populate para garantir que o presente escolhido seja carregado
+      const user = await User.findById(req.user._id)
+        .populate('chosenGift', 'name description') // Popula o nome e a descrição do presente
+        .exec();
+      
+      if (!user) {
+        console.log('⚠️ Usuário não encontrado no banco');
+        return res.json({ user: null });
       }
-    });
-  } catch (error) {
-    console.error('❌ Erro ao buscar usuário:', error);
+
+      console.log('✅ Usuário autenticado:', {
+        id: user._id,
+        email: user.email,
+        hasChosenGift: user.hasChosenGift
+      });
+
+      // Retorna apenas os campos necessários, incluindo o objeto chosenGift populado
+      res.json({
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          photo: user.photo,
+          isAdmin: user.isAdmin,
+          hasChosenGift: user.hasChosenGift,
+          chosenGift: user.chosenGift
+        }
+      });
+    } catch (error) {
+      console.error('❌ Erro ao buscar usuário:', error);
+      res.json({ user: null });
+    }
+  } else {
+    console.log('❌ Usuário não autenticado');
     res.json({ user: null });
   }
 });
 
-// CORREÇÃO 4: Logout melhorado
+// Rota para logout
 router.post('/logout', (req, res) => {
-  const userId = req.user?._id;
-  console.log('👋 Logout solicitado:', { userId });
+  console.log('👋 Logout:', { userId: req.user?._id });
   
-  if (!req.user) {
-    return res.json({ message: 'Já deslogado' });
-  }
-
+  // Note: req.logout requer um callback a partir do Express 5
   req.logout((err) => {
     if (err) {
       console.error('❌ Erro ao fazer logout:', err);
       return res.status(500).json({ error: 'Erro ao fazer logout' });
     }
-    
     req.session.destroy((err) => {
       if (err) {
         console.error('❌ Erro ao destruir sessão:', err);
       }
-      
-      res.clearCookie('sessionId', {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-      });
-      
-      console.log('✅ Logout completo');
+      res.clearCookie('sessionId');
       res.json({ message: 'Logout realizado com sucesso' });
     });
-  });
-});
-
-// NOVA ROTA: Verificar status de autenticação (útil para debug)
-router.get('/status', (req, res) => {
-  res.json({
-    isAuthenticated: req.isAuthenticated?.() || false,
-    hasSession: !!req.session,
-    sessionID: req.sessionID,
-    user: req.user ? {
-      id: req.user._id,
-      email: req.user.email
-    } : null
   });
 });
 
