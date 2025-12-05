@@ -1,28 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, LogOut, CheckCircle, User, MapPin, Calendar } from 'lucide-react';
+import { Gift, LogOut, CheckCircle, User } from 'lucide-react';
 import { getGifts, chooseGift, logout } from '../services/api';
 
 const GiftList = ({ user, onLogout }) => {
-  // ATENÇÃO: user é uma prop. Para fazer a atualização na tela após a escolha,
-  // precisamos atualizar a prop 'user' de forma mutável (anti-pattern) ou
-  // forçar um re-fetch do componente pai. Usaremos a mutação da prop 
-  // e atualização de estado que já estava para simplificar.
-  
   const [gifts, setGifts] = useState([]);
-  const [loading, setLoading] = useState(false); 
+  const [loading, setLoading] = useState(true);
   const [selectedGift, setSelectedGift] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [choosing, setChoosing] = useState(false);
 
   useEffect(() => {
-    // Só carrega a lista se o usuário ainda não escolheu um presente
-    if (!user.chosenGift && !user.hasChosenGift) {
-      setLoading(true);
-      loadGifts();
-    }
-    // A propriedade `user` é a dependência. Se ela vier do backend com
-    // o presente populado, a lista não é mais carregada.
-  }, [user]); 
+    loadGifts();
+  }, []);
 
   const loadGifts = async () => {
     try {
@@ -47,27 +36,29 @@ const GiftList = ({ user, onLogout }) => {
     setChoosing(true);
     try {
       await chooseGift(selectedGift._id);
+      alert(`Presente "${selectedGift.name}" escolhido com sucesso! Você será desconectado.`);
       
-      // ⬅️ ATUALIZAÇÃO NO FRONTEND PARA MUDAR A TELA IMEDIATAMENTE
-      // Atualiza o objeto prop 'user' mutavelmente (para que o IF abaixo seja executado)
-      user.chosenGift = { name: selectedGift.name };
-      user.hasChosenGift = true;
-      
-      alert(`Presente "${selectedGift.name}" escolhido com sucesso!`);
-      
-      setChoosing(false);
-      setShowConfirmation(false);
-      // Força um re-render do componente para que a nova tela de confirmação apareça
-      setLoading(false); 
-
+      setTimeout(async () => {
+        await logout();
+        onLogout();
+      }, 2000);
     } catch (error) {
       console.error('Erro ao escolher presente:', error);
-      alert(`Erro ao escolher presente: ${error.response?.data?.error || error.message}`);
+      const message = error.response?.data?.error || 'Erro ao escolher presente';
+      alert(message);
       setChoosing(false);
       setShowConfirmation(false);
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      onLogout();
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -81,78 +72,16 @@ const GiftList = ({ user, onLogout }) => {
         }}
       >
         <div className="text-center bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl">
-          <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <Gift className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-pulse" />
           <p className="text-gray-600">Carregando presentes...</p>
         </div>
       </div>
     );
   }
-  
-  // ⬅️ BLOCO PARA EXIBIR O PRESENTE ESCOLHIDO
-  // Verifica se a flag 'hasChosenGift' está true OU se o presente veio populado
-  if (user.hasChosenGift) {
-    
-    // CORREÇÃO: Tenta pegar o nome de forma segura, usando o nome populado se existir, ou fallback.
-    const chosenGiftName = user.chosenGift?.name || "Reservado";
 
-    return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          backgroundImage: 'url(/background.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat'
-        }}
-      >
-        <div className="max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 text-center">
-          
-          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-6" />
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Escolha Concluída!
-          </h1>
-          <p className="text-lg text-gray-600 mb-6">
-            Obrigado por sua contribuição. O presente foi reservado com sucesso.
-          </p>
-
-          <div className="bg-green-50/70 border border-green-200 p-5 rounded-xl mb-6 shadow-md">
-            <p className="text-sm font-semibold text-green-800 mb-1">
-              Seu presente escolhido:
-            </p>
-            <h2 className="text-2xl font-extrabold text-green-700">
-              {chosenGiftName}
-            </h2>
-          </div>
-          
-          <div className="text-left space-y-3 p-4 bg-gray-50 rounded-lg shadow-inner">
-            <h3 className="font-bold text-gray-800">Detalhes do Evento</h3>
-            <p className="flex items-center gap-2 text-gray-700">
-              <Calendar className="w-4 h-4 text-purple-600" />
-              21 de Dezembro de 2025 - Domingo
-            </p>
-            <p className="flex items-start gap-2 text-gray-700">
-              <MapPin className="w-4 h-4 text-purple-600 mt-1" />
-              Salão de festas - Edifício Essenza, Rua 27 de Outubro, nº 244, Centro, Suzano - SP
-            </p>
-          </div>
-
-          <button
-            onClick={onLogout}
-            className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
-          >
-            <LogOut className="w-5 h-5" />
-            Sair e Fechar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
-  // Estrutura principal da LISTA DE PRESENTES (se ainda não escolheu)
   return (
     <div 
-      className="min-h-screen p-4 flex justify-center"
+      className="min-h-screen p-4"
       style={{
         backgroundImage: 'url(/background.png)',
         backgroundSize: 'cover',
@@ -160,77 +89,87 @@ const GiftList = ({ user, onLogout }) => {
         backgroundRepeat: 'no-repeat'
       }}
     >
-      <div className="max-w-4xl w-full bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 md:p-10">
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Gift className="w-8 h-8 text-purple-600" />
-              <h1 className="text-3xl font-bold text-gray-800">
-                Lista de Presentes
-              </h1>
-            </div>
-            <p className="text-gray-600">
-              Olá, {user.name.split(' ')[0]}! Escolha seu presente especial.
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-right">
-              <p className="font-semibold text-sm text-gray-700">{user.name}</p>
-              <p className="text-xs text-gray-500">{user.email}</p>
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 mb-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              {user.photo ? (
+                <img 
+                  src={user.photo} 
+                  alt={user.name}
+                  className="w-10 h-10 rounded-full"
+                />
+              ) : (
+                <User className="w-10 h-10 text-purple-600" />
+              )}
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">
+                  Olá, {user.name}!
+                </h1>
+                <p className="text-sm text-gray-600">{user.email}</p>
+              </div>
             </div>
             <button
-              onClick={onLogout}
-              className="p-3 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition"
-              title="Sair"
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
+              Sair
             </button>
           </div>
         </div>
 
-        {gifts.length === 0 && !loading ? (
-          <div className="text-center p-10 bg-gray-50 rounded-lg">
-            <p className="text-xl text-gray-600 font-semibold">
-              Nenhum presente disponível no momento.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {gifts.map((gift) => (
-              <div
-                key={gift._id}
-                className="bg-white border border-gray-200 rounded-xl p-6 shadow-lg hover:shadow-xl transition duration-300 flex flex-col justify-between"
-              >
-                <div>
-                  <h2 className="text-xl font-bold text-purple-700 mb-2">
-                    {gift.name}
-                  </h2>
-                  {gift.description && (
-                    <p className="text-gray-600 mb-4">{gift.description}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleGiftSelection(gift)}
-                  className="mt-4 w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition shadow-md"
-                >
-                  Escolher este presente
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Escolha seu presente
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Selecione apenas um presente. Sua escolha é definitiva!
+          </p>
 
-        {/* Modal de Confirmação */}
+          {gifts.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Gift className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Todos os presentes já foram escolhidos!</p>
+              <p className="text-sm mt-2">Obrigado por participar.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {gifts.map(gift => (
+                <button
+                  key={gift._id}
+                  onClick={() => handleGiftSelection(gift)}
+                  className="w-full p-5 rounded-xl border-2 border-purple-300 bg-purple-50/80 backdrop-blur-sm hover:bg-purple-100/80 hover:border-purple-400 hover:shadow-md transition text-left group"
+                >
+                  <div className="flex items-center gap-4">
+                    <Gift className="w-7 h-7 text-purple-600 group-hover:scale-110 transition-transform" />
+                    <div className="flex-1">
+                      <span className="font-semibold text-gray-800 text-lg block">
+                        {gift.name}
+                      </span>
+                      {gift.description && (
+                        <span className="text-sm text-gray-600 mt-1 block">
+                          {gift.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {showConfirmation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl p-8 max-w-sm w-full shadow-2xl">
-              <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">
-                Confirmar Escolha
-              </h3>
-              <div className="mb-6 text-center">
-                <p className="text-gray-700 mb-2">
-                  Você está prestes a reservar o seguinte presente:
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-md w-full">
+              <div className="text-center mb-6">
+                <CheckCircle className="w-20 h-20 text-green-600 mx-auto mb-4" />
+                <h3 className="text-2xl font-bold text-gray-800 mb-3">
+                  Confirmar escolha?
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Você está prestes a escolher:
                 </p>
                 <div className="bg-purple-50 p-4 rounded-lg mb-4">
                   <p className="text-xl font-bold text-purple-600">
