@@ -1,7 +1,7 @@
 const express = require('express');
 const passport = require('passport');
 const router = express.Router();
-const User = require('../models/User');
+const User = require('../models/User'); // Certifique-se de que o caminho está correto
 
 // Rota para iniciar autenticação Google
 router.get('/google',
@@ -11,7 +11,7 @@ router.get('/google',
   })
 );
 
-// CORREÇÃO: Callback do Google com estratégia de correção para iOS/Safari
+// CORREÇÃO FINAL PARA SAFARI/iOS: Callback do Google com estratégia URL Handoff
 router.get('/google/callback',
   passport.authenticate('google', { 
     failureRedirect: process.env.FRONTEND_URL,
@@ -25,35 +25,20 @@ router.get('/google/callback',
         sessionID: req.sessionID
       });
 
-      // ESTRATÉGIA DE CORREÇÃO PARA IOS/SAFARI (ITP):
-      // Retorna um HTML com JavaScript que tenta forçar o navegador a aceitar
-      // o cookie de sessão antes de redirecionar para o frontend.
+      // Passamos o ID do usuário como parâmetro de query no redirecionamento.
+      const redirectUrl = `${process.env.FRONTEND_URL}?user_id=${req.user._id}`;
       
-      const successHtml = `
-        <html>
-          <head>
-            <title>Autenticação Concluída</title>
-          </head>
-          <body>
-            <script>
-              // 1. Tenta redirecionar a janela principal (funciona se for um popup/nova janela)
-              if (window.opener) {
-                window.opener.location.href = '${process.env.FRONTEND_URL}';
-                window.close();
-              }
-              
-              // 2. Redireciona a própria janela (para o fluxo normal de redirect)
-              window.location.href = '${process.env.FRONTEND_URL}';
-            </script>
-            Autenticação concluída. Redirecionando...
-          </body>
-        </html>
-      `;
-
-      // Enviamos o HTML de sucesso. O Passport já setou o cookie de sessão.
-      res.setHeader('Content-Type', 'text/html');
-      res.send(successHtml);
-
+      // Salvamos a sessão para garantir que ela esteja no MongoStore
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Erro ao salvar sessão (URL Handoff):', err);
+          return res.redirect(process.env.FRONTEND_URL + '?error=session');
+        }
+        
+        console.log(`💾 Sessão salva, redirecionando para: ${redirectUrl}`);
+        res.redirect(redirectUrl);
+      });
+      
     } catch (error) {
       console.error('❌ Erro no callback:', error);
       res.redirect(process.env.FRONTEND_URL + '?error=callback');
@@ -103,7 +88,7 @@ router.get('/current-user', async (req, res) => {
       });
     } catch (error) {
       console.error('❌ Erro ao buscar usuário:', error);
-      res.json({ user: null });
+      res.status(500).json({ error: 'Erro interno ao buscar usuário' });
     }
   } else {
     console.log('❌ Usuário não autenticado');
@@ -115,7 +100,6 @@ router.get('/current-user', async (req, res) => {
 router.post('/logout', (req, res) => {
   console.log('👋 Logout:', { userId: req.user?._id });
   
-  // Note: req.logout requer um callback a partir do Express 5
   req.logout((err) => {
     if (err) {
       console.error('❌ Erro ao fazer logout:', err);
@@ -125,7 +109,7 @@ router.post('/logout', (req, res) => {
       if (err) {
         console.error('❌ Erro ao destruir sessão:', err);
       }
-      res.clearCookie('sessionId');
+      res.clearCookie('connect.sid'); // Garante que o cookie seja limpo
       res.json({ message: 'Logout realizado com sucesso' });
     });
   });
