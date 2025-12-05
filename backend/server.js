@@ -102,16 +102,31 @@ app.get('/api/health', (req, res) => {
 // ROTA CORRIGIDA PARA GARANTIR O POPULATE
 app.get('/api/auth/current-user', async (req, res) => {
   if (req.user) {
-    // ⬅️ CORREÇÃO: Busca o usuário do banco de dados usando o ID e popula o presente
-    const userWithGift = await User.findById(req.user._id)
-      .populate({
-        path: 'chosenGift',
-        select: 'name' // Seleciona apenas o nome do presente
-      })
-      .exec(); // Executa a query
+    const userId = req.user._id;
+
+    // 1. Loga o ID do presente que o usuário tem no seu registro
+    console.log(`[DEBUG AUTH] Usuário logado ID: ${userId}`);
+    console.log(`[DEBUG AUTH] Tentando buscar o presente com ID: ${req.user.chosenGift}`); 
+
+    // Busca o usuário do banco e *popula* o presente escolhido.
+    const userWithGift = await User.findById(userId)
+      .populate('chosenGift') // Tira o 'select: name' para ser mais robusto (conforme a última sugestão)
+      .exec(); 
       
     if (!userWithGift) {
+      console.log(`[DEBUG AUTH] Falha na busca pelo ID ${userId} no DB.`);
       return res.json({ user: null });
+    }
+    
+    // 2. Loga o resultado da população
+    console.log(`[DEBUG AUTH] Resultado da População:`);
+    // Verifica se o presente foi populado (se for um objeto, é sucesso; se for null, falhou)
+    if (userWithGift.chosenGift && userWithGift.chosenGift.name) {
+      console.log(`[DEBUG AUTH] SUCESSO! Nome do Presente encontrado: ${userWithGift.chosenGift.name}`);
+    } else if (userWithGift.chosenGift === null && userWithGift.hasChosenGift) {
+      console.log(`[DEBUG AUTH] FALHA DE POPULATE. chosenGift é null, mas tem hasChosenGift: true.`);
+    } else {
+      console.log(`[DEBUG AUTH] chosenGift: ${userWithGift.chosenGift}`);
     }
 
     res.json({ user: userWithGift });
