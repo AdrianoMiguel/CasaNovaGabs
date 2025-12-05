@@ -5,20 +5,52 @@ const User = require('../models/User');
 
 // Rota para iniciar autenticação Google
 router.get('/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Força seleção de conta
+  })
 );
 
-// Callback do Google
+// CORREÇÃO: Callback do Google com melhor tratamento de erros
 router.get('/google/callback',
-  passport.authenticate('google', { failureRedirect: process.env.FRONTEND_URL }),
-  (req, res) => {
-    // Redireciona para o frontend após login
-    res.redirect(process.env.FRONTEND_URL);
+  passport.authenticate('google', { 
+    failureRedirect: process.env.FRONTEND_URL,
+    failureMessage: true
+  }),
+  async (req, res) => {
+    try {
+      console.log('✅ Autenticação bem-sucedida:', {
+        userId: req.user._id,
+        email: req.user.email,
+        sessionID: req.sessionID
+      });
+
+      // Força salvar a sessão antes de redirecionar
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Erro ao salvar sessão:', err);
+          return res.redirect(process.env.FRONTEND_URL + '?error=session');
+        }
+        
+        console.log('💾 Sessão salva, redirecionando...');
+        res.redirect(process.env.FRONTEND_URL);
+      });
+    } catch (error) {
+      console.error('❌ Erro no callback:', error);
+      res.redirect(process.env.FRONTEND_URL + '?error=callback');
+    }
   }
 );
 
-// Rota para obter usuário atual - COM POPULATE
+// CORREÇÃO: Rota para obter usuário atual com melhor logging
 router.get('/current-user', async (req, res) => {
+  console.log('🔍 Verificando usuário atual:', {
+    hasSession: !!req.session,
+    sessionID: req.sessionID,
+    isAuthenticated: req.isAuthenticated(),
+    userId: req.user?._id
+  });
+
   if (req.isAuthenticated()) {
     try {
       // Busca o usuário e popula o presente escolhido
@@ -27,8 +59,15 @@ router.get('/current-user', async (req, res) => {
         .exec();
       
       if (!user) {
+        console.log('⚠️ Usuário não encontrado no banco');
         return res.json({ user: null });
       }
+
+      console.log('✅ Usuário autenticado:', {
+        id: user._id,
+        email: user.email,
+        hasChosenGift: user.hasChosenGift
+      });
 
       res.json({
         user: {
@@ -38,26 +77,35 @@ router.get('/current-user', async (req, res) => {
           photo: user.photo,
           isAdmin: user.isAdmin,
           hasChosenGift: user.hasChosenGift,
-          chosenGift: user.chosenGift // Agora vem populado com { _id, name, description }
+          chosenGift: user.chosenGift
         }
       });
     } catch (error) {
-      console.error('Erro ao buscar usuário:', error);
+      console.error('❌ Erro ao buscar usuário:', error);
       res.json({ user: null });
     }
   } else {
+    console.log('❌ Usuário não autenticado');
     res.json({ user: null });
   }
 });
 
 // Rota para logout
 router.post('/logout', (req, res) => {
+  console.log('👋 Logout:', { userId: req.user?._id });
+  
   req.logout((err) => {
     if (err) {
+      console.error('❌ Erro ao fazer logout:', err);
       return res.status(500).json({ error: 'Erro ao fazer logout' });
     }
-    req.session.destroy();
-    res.json({ message: 'Logout realizado com sucesso' });
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('❌ Erro ao destruir sessão:', err);
+      }
+      res.clearCookie('sessionId');
+      res.json({ message: 'Logout realizado com sucesso' });
+    });
   });
 });
 
