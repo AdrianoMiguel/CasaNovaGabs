@@ -11,16 +11,22 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // CORREÇÃO iOS: Detecta URL Handoff e força nova verificação
+    // CORREÇÃO iOS: Detecta URL Handoff. 
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user_id');
     
+    // Se userId está presente, é a primeira renderização após o OAuth.
+    // Pulamos o checkAuth inicial que falha no iOS e definimos loading=false.
+    // Isso forçará a renderização de <Login />, que irá detectar o userId
+    // e executar o `window.location.reload()` necessário.
+    // É crucial NÃO limpar a URL nem chamar checkAuth() aqui.
     if (userId) {
-      console.log('✅ URL Handoff detectado, forçando checkAuth...');
-      // Limpa a URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+      console.log('✅ URL Handoff detectado, pulando checkAuth inicial.');
+      setLoading(false);
+      return;
     }
     
+    // Se não há userId, a chamada pode ocorrer normalmente.
     checkAuth();
   }, []);
 
