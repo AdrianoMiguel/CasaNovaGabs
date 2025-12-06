@@ -3,7 +3,7 @@ const passport = require('passport');
 const router = express.Router();
 const User = require('../models/User');
 
-// CORREÇÃO 1: Iniciar autenticação Google com configurações para mobile
+// CORREÇÃO 1: Iniciar autenticação Google 
 router.get('/google',
   passport.authenticate('google', { 
     scope: ['profile', 'email'],
@@ -12,52 +12,24 @@ router.get('/google',
   })
 );
 
-// CORREÇÃO 2: Callback otimizado com melhor tratamento
+// CORREÇÃO 2: Callback SIMPLIFICADO
 router.get('/google/callback',
   passport.authenticate('google', { 
     failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
     failureMessage: true
   }),
-  async (req, res) => {
+  // Com SameSite=Lax e Domain configurado, o redirecionamento é direto.
+  (req, res) => {
     try {
-      console.log('✅ Callback recebido:', {
+      console.log('✅ Callback recebido e autenticação concluída:', {
         userId: req.user._id,
         email: req.user.email,
         sessionID: req.sessionID,
-        hasSession: !!req.session
       });
-
-      // IMPORTANTE: Força a regeneração da sessão para garantir persistência
-      req.session.regenerate((err) => {
-        if (err) {
-          console.error('❌ Erro ao regenerar sessão:', err);
-          return res.redirect(process.env.FRONTEND_URL + '?error=session_regenerate');
-        }
-
-        // Re-loga o usuário na nova sessão
-        req.login(req.user, (err) => {
-          if (err) {
-            console.error('❌ Erro ao fazer login:', err);
-            return res.redirect(process.env.FRONTEND_URL + '?error=login_failed');
-          }
-
-          // Salva a sessão antes de redirecionar
-          req.session.save((err) => {
-            if (err) {
-              console.error('❌ Erro ao salvar sessão:', err);
-              return res.redirect(process.env.FRONTEND_URL + '?error=session_save');
-            }
-            
-            console.log('💾 Sessão salva com sucesso:', {
-              sessionID: req.sessionID,
-              userId: req.user._id
-            });
-
-            // CORREÇÃO IOS: Redireciona com user_id para forçar nova autenticação
-            res.redirect(process.env.FRONTEND_URL + '?user_id=' + req.user._id);
-          });
-        });
-      });
+      
+      // Redireciona diretamente para o frontend. O cookie já foi definido.
+      res.redirect(process.env.FRONTEND_URL);
+      
     } catch (error) {
       console.error('❌ Erro no callback:', error);
       res.redirect(process.env.FRONTEND_URL + '?error=callback_exception');
@@ -65,7 +37,7 @@ router.get('/google/callback',
   }
 );
 
-// CORREÇÃO 3: Current user com melhor logging e tratamento
+// CORREÇÃO 3: Current user com melhor logging e tratamento (Mantido)
 router.get('/current-user', async (req, res) => {
   console.log('🔍 Verificando usuário atual:', {
     hasSession: !!req.session,
@@ -114,7 +86,7 @@ router.get('/current-user', async (req, res) => {
   }
 });
 
-// CORREÇÃO 4: Logout melhorado
+// CORREÇÃO 4: Logout melhorado (Atualizado para SameSite=Lax)
 router.post('/logout', (req, res) => {
   const userId = req.user?._id;
   console.log('👋 Logout solicitado:', { userId });
@@ -134,11 +106,13 @@ router.post('/logout', (req, res) => {
         console.error('❌ Erro ao destruir sessão:', err);
       }
       
+      // Limpeza de cookie consistente com a nova configuração do SameSite/Domain
       res.clearCookie('sessionId', {
         path: '/',
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+        secure: process.env.FRONTEND_URL?.startsWith('https'),
+        sameSite: 'lax',
+        domain: process.env.COOKIE_DOMAIN || null
       });
       
       console.log('✅ Logout completo');

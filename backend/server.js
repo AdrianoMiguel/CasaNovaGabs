@@ -11,28 +11,30 @@ const User = require('./models/User');
 
 const app = express();
 
-// CORREÇÃO 1: Trust proxy (CORRETO)
+// CORREÇÃO 1: Trust proxy (Necessário para ambientes como Fly.io/Vercel)
 app.set('trust proxy', 1);
 
 // Middlewares
 app.use(express.json());
 
-// CORREÇÃO 2: CORS PERMISSIVO, MAS SEGURO
+// Verifica se está em ambiente de deploy (usando HTTPS)
+const isHttps = process.env.FRONTEND_URL?.startsWith('https');
+
+// CORREÇÃO 2: CORS com origem definida e credenciais
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // Permite apenas a URL do seu frontend
+  origin: process.env.FRONTEND_URL, // Ex: https://lista.SEU-DOMINIO-RAIZ.com
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
 
-// CORREÇÃO 3: Sessão com configurações otimizadas para iOS
+// CORREÇÃO 3: Sessão com configurações para subdomínio (SameSite=Lax + Domain)
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  name: 'sessionId', // Nome customizado do cookie
+  name: 'sessionId', 
 
-  // CONFIGURAÇÃO FALTANTE DO MONGOSTORE
   store: MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
     collectionName: 'sessions', 
@@ -42,12 +44,15 @@ app.use(session({
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000, 
     httpOnly: true, 
-    // OBRIGATÓRIO PARA iOS/Safari em Produção
-    secure: process.env.NODE_ENV === 'production', 
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    // Secure deve ser TRUE em ambiente de produção com subdomínios HTTPS
+    secure: isHttps, 
+    // SameSite=Lax é o padrão seguro e agora funcional (same-site)
+    sameSite: 'lax', 
     path: '/', 
+    // CRÍTICO: Define o cookie para o domínio raiz (ex: .meudominio.com)
+    // Se a variável não estiver setada, usa null (para ambiente local/dev)
+    domain: process.env.COOKIE_DOMAIN || null, 
   },
-  // REMOVIDO: Removemos 'proxy: true' para evitar conflito com app.set('trust proxy', 1)
 }));
 
 // Passport
@@ -59,7 +64,7 @@ passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.GOOGLE_CALLBACK_URL,
-    proxy: true // Mantém proxy aqui para o OAuth, que é padrão no Passport
+    proxy: true 
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -107,14 +112,9 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ MongoDB conectado');
     console.log('💾 MongoStore: ativado');
+    console.log(`🔑 Cookie Domain: ${process.env.COOKIE_DOMAIN || 'não definido (local)'}`);
   })
   .catch(err => console.error('❌ Erro ao conectar MongoDB:', err));
-
-// CORREÇÃO 4: Middleware de debug para sessões
-app.use((req, res, next) => {
-  // Removido logs verbosos para evitar poluição, mantendo apenas o log do auth.js
-  next();
-});
 
 // Rotas
 app.use('/api/auth', require('./routes/auth'));
