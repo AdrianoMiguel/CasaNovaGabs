@@ -41,7 +41,9 @@ const sessionMiddleware = session({
     touchAfter: 24 * 3600,
     crypto: {
       secret: process.env.SESSION_SECRET
-    }
+    },
+    stringify: false, // CRÍTICO: Não serializa a sessão
+    ttl: 7 * 24 * 60 * 60 // TTL em segundos
   }),
   
   name: 'sessionId',
@@ -63,8 +65,15 @@ const sessionMiddleware = session({
   genid: function(req) {
     // Se já existe sessionID no cookie, mantém ele
     if (req.cookies && req.cookies.sessionId) {
-      console.log('🔄 Reutilizando sessionID existente:', req.cookies.sessionId);
-      return req.cookies.sessionId;
+      let cookieId = req.cookies.sessionId;
+      
+      // Remove o prefixo 's:' se existir (formato signed cookie)
+      if (cookieId.startsWith('s:')) {
+        cookieId = cookieId.substring(2).split('.')[0];
+      }
+      
+      console.log('🔄 Reutilizando sessionID existente:', cookieId);
+      return cookieId;
     }
     // Senão, cria um novo
     const newId = require('crypto').randomBytes(16).toString('hex');
