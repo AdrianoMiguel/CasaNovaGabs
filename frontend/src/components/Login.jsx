@@ -1,3 +1,5 @@
+// adrianomiguel/casanovagabs/CasaNovaGabs-305534e5f352c32f38f63d7c4dc730a7b4ae08e9/frontend/src/components/Login.jsx
+
 import React, { useState, useEffect } from 'react';
 import { Gift } from 'lucide-react';
 
@@ -8,22 +10,11 @@ const Login = () => {
   const [debugInfo, setDebugInfo] = useState(null);
   
   useEffect(() => {
-    // Verifica parâmetros da URL
+    // Verifica parâmetros de erro da URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
-    const userId = urlParams.get('user_id');
     
-    // CORREÇÃO IOS: Se veio com user_id, força reload para estabelecer sessão
-    if (userId) {
-      console.log('✅ URL Handoff detectado (iOS), recarregando...');
-      // Remove o parâmetro da URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Força reload para pegar a sessão
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-      return;
-    }
+    // Removido: A lógica de ITP (userId detection e reload) foi movida para App.jsx
     
     // Trata erros
     if (error) {
@@ -50,7 +41,7 @@ const Login = () => {
     setErrorMessage('');
     
     try {
-      // CORREÇÃO: Abre o Google OAuth na mesma janela (melhor para mobile)
+      // Abre o Google OAuth na mesma janela
       console.log('🔐 Iniciando autenticação Google...');
       window.location.href = `${API_URL}/auth/google`;
     } catch (error) {
