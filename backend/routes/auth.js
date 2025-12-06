@@ -12,44 +12,52 @@ router.get('/google',
   })
 );
 
-// CORREÇÃO MongoStore: Callback simplificado
+// SOLUÇÃO FINAL iOS: Callback sem ANY modificação de sessão
 router.get('/google/callback',
-  passport.authenticate('google', { 
-    failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
-    failureMessage: true
-  }),
+  (req, res, next) => {
+    // CRÍTICO: Captura o sessionID ANTES do Passport
+    const originalSessionID = req.sessionID;
+    console.log('🔵 ANTES do Passport - sessionID:', originalSessionID);
+    
+    passport.authenticate('google', { 
+      failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
+      failureMessage: true,
+      // CRÍTICO: Não deixa o Passport mexer na sessão
+      session: true
+    })(req, res, next);
+  },
   async (req, res) => {
     try {
+      const sessionIDAntes = req.sessionID;
       console.log('✅ Callback recebido:', {
         userId: req.user._id,
         email: req.user.email,
-        sessionID: req.sessionID,
-        hasSession: !!req.session,
-        sessionPassport: req.session.passport
+        sessionID: sessionIDAntes,
+        hasSession: !!req.session
       });
 
-      // O Passport JÁ autenticou e JÁ colocou o user na sessão
-      // Não precisamos fazer nada além de salvar
+      // FORÇA o req.session a ter os dados do usuário
+      req.session.passport = req.session.passport || {};
+      req.session.passport.user = req.user._id.toString();
       
-      // AGUARDA um pouco para garantir que o Passport terminou
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      console.log('📝 Sessão após Passport:', {
+      console.log('📝 Dados forçados na sessão:', {
         passport: req.session.passport,
         sessionID: req.sessionID
       });
 
-      // Salva a sessão (que já tem os dados do Passport)
+      // Salva SEM tocar no sessionID
       req.session.save((err) => {
         if (err) {
           console.error('❌ Erro ao salvar sessão:', err);
           return res.redirect(process.env.FRONTEND_URL + '?error=session_save');
         }
         
-        console.log('💾 Sessão salva com sucesso:', {
-          sessionID: req.sessionID,
-          userId: req.user._id,
-          hasPassportData: !!req.session.passport
+        const sessionIDDepois = req.sessionID;
+        console.log('💾 Sessão salva:', {
+          sessionIDAntes,
+          sessionIDDepois,
+          mudou: sessionIDAntes !== sessionIDDepois,
+          userId: req.user._id
         });
 
         // Redireciona COM o user_id
@@ -63,7 +71,7 @@ router.get('/google/callback',
   }
 );
 
-// Current user
+// Current user COM LOGS DETALHADOS
 router.get('/current-user', async (req, res) => {
   console.log('🔍 Verificando usuário atual:', {
     hasSession: !!req.session,
@@ -71,7 +79,8 @@ router.get('/current-user', async (req, res) => {
     sessionPassport: req.session?.passport,
     isAuthenticated: req.isAuthenticated?.() || false,
     userId: req.user?._id,
-    cookies: req.headers.cookie ? 'presente' : 'ausente'
+    cookies: req.headers.cookie ? 'presente' : 'ausente',
+    cookieHeader: req.headers.cookie || 'nenhum'
   });
 
   if (!req.isAuthenticated || !req.isAuthenticated()) {
