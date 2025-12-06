@@ -8,22 +8,11 @@ const Login = () => {
   const [debugInfo, setDebugInfo] = useState(null);
   
   useEffect(() => {
-    // Verifica parâmetros da URL
+    // Verifica parâmetros de erro da URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
-    const userId = urlParams.get('user_id');
     
-    // CORREÇÃO IOS: Se veio com user_id, força reload para estabelecer sessão
-    if (userId) {
-      console.log('✅ URL Handoff detectado (iOS), recarregando...');
-      // Remove o parâmetro da URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Força reload para pegar a sessão
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-      return;
-    }
+    // Removido: Lógica de user_id e reload, agora gerenciada por App.jsx
     
     // Trata erros
     if (error) {
