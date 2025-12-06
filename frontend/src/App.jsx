@@ -11,24 +11,22 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // CORREÇÃO ITP/SameSite: Detecta URL Handoff (user_id) e força reload.
+    // CORREÇÃO iOS: Detecta URL Handoff. 
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user_id');
     
+    // Se userId está presente, é a primeira renderização após o OAuth.
+    // Pulamos o checkAuth inicial que falha no iOS e definimos loading=false.
+    // Isso forçará a renderização de <Login />, que irá detectar o userId
+    // e executar o `window.location.reload()` necessário.
+    // É crucial NÃO limpar a URL nem chamar checkAuth() aqui.
     if (userId) {
-      console.log('✅ URL Handoff detectado, forçando reload para fixar sessão...');
-      
-      // 1. Limpa o parâmetro user_id da URL antes do reload.
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // 2. FORÇA O RELOAD IMEDIATO. Esta é a etapa CRÍTICA.
-      window.location.reload(); 
-      
-      // Interrompe o checkAuth inicial, o reload irá disparar um novo App.
+      console.log('✅ URL Handoff detectado, pulando checkAuth inicial.');
+      setLoading(false);
       return;
     }
     
-    // Se não há userId, segue o fluxo normal (checkAuth).
+    // Se não há userId, a chamada pode ocorrer normalmente.
     checkAuth();
   }, []);
 
