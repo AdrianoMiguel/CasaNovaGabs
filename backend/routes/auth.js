@@ -3,67 +3,61 @@ const passport = require('passport');
 const router = express.Router();
 const User = require('../models/User');
 
-// Iniciar autenticação Google
+// CORREÇÃO 1: Iniciar autenticação Google com configurações para mobile
 router.get('/google',
   passport.authenticate('google', { 
     scope: ['profile', 'email'],
-    prompt: 'select_account',
-    accessType: 'offline'
+    prompt: 'select_account', // Força seleção de conta
+    accessType: 'offline' // Garante token de refresh
   })
 );
 
-// SOLUÇÃO FINAL iOS: Callback sem ANY modificação de sessão
+// CORREÇÃO 2: Callback otimizado com melhor tratamento
 router.get('/google/callback',
-  (req, res, next) => {
-    // CRÍTICO: Captura o sessionID ANTES do Passport
-    const originalSessionID = req.sessionID;
-    console.log('🔵 ANTES do Passport - sessionID:', originalSessionID);
-    
-    passport.authenticate('google', { 
-      failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
-      failureMessage: true,
-      // CRÍTICO: Não deixa o Passport mexer na sessão
-      session: true
-    })(req, res, next);
-  },
+  passport.authenticate('google', { 
+    failureRedirect: process.env.FRONTEND_URL + '?error=auth_failed',
+    failureMessage: true
+  }),
   async (req, res) => {
     try {
-      const sessionIDAntes = req.sessionID;
       console.log('✅ Callback recebido:', {
         userId: req.user._id,
         email: req.user.email,
-        sessionID: sessionIDAntes,
+        sessionID: req.sessionID,
         hasSession: !!req.session
       });
 
-      // FORÇA o req.session a ter os dados do usuário
-      req.session.passport = req.session.passport || {};
-      req.session.passport.user = req.user._id.toString();
-      
-      console.log('📝 Dados forçados na sessão:', {
-        passport: req.session.passport,
-        sessionID: req.sessionID
-      });
-
-      // Salva SEM tocar no sessionID
-      req.session.save((err) => {
+      // IMPORTANTE: Força a regeneração da sessão para garantir persistência
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('❌ Erro ao salvar sessão:', err);
-          return res.redirect(process.env.FRONTEND_URL + '?error=session_save');
+          console.error('❌ Erro ao regenerar sessão:', err);
+          return res.redirect(process.env.FRONTEND_URL + '?error=session_regenerate');
         }
-        
-        const sessionIDDepois = req.sessionID;
-        console.log('💾 Sessão salva:', {
-          sessionIDAntes,
-          sessionIDDepois,
-          mudou: sessionIDAntes !== sessionIDDepois,
-          userId: req.user._id
-        });
 
-        // Redireciona COM o user_id
-        res.redirect(process.env.FRONTEND_URL + '?user_id=' + req.user._id);
+        // Re-loga o usuário na nova sessão
+        req.login(req.user, (err) => {
+          if (err) {
+            console.error('❌ Erro ao fazer login:', err);
+            return res.redirect(process.env.FRONTEND_URL + '?error=login_failed');
+          }
+
+          // Salva a sessão antes de redirecionar
+          req.session.save((err) => {
+            if (err) {
+              console.error('❌ Erro ao salvar sessão:', err);
+              return res.redirect(process.env.FRONTEND_URL + '?error=session_save');
+            }
+            
+            console.log('💾 Sessão salva com sucesso:', {
+              sessionID: req.sessionID,
+              userId: req.user._id
+            });
+
+            // CORREÇÃO IOS: Redireciona com user_id para forçar nova autenticação
+            res.redirect(process.env.FRONTEND_URL + '?user_id=' + req.user._id);
+          });
+        });
       });
-      
     } catch (error) {
       console.error('❌ Erro no callback:', error);
       res.redirect(process.env.FRONTEND_URL + '?error=callback_exception');
@@ -71,16 +65,14 @@ router.get('/google/callback',
   }
 );
 
-// Current user COM LOGS DETALHADOS
+// CORREÇÃO 3: Current user com melhor logging e tratamento
 router.get('/current-user', async (req, res) => {
   console.log('🔍 Verificando usuário atual:', {
     hasSession: !!req.session,
     sessionID: req.sessionID,
-    sessionPassport: req.session?.passport,
     isAuthenticated: req.isAuthenticated?.() || false,
     userId: req.user?._id,
-    cookies: req.headers.cookie ? 'presente' : 'ausente',
-    cookieHeader: req.headers.cookie || 'nenhum'
+    cookies: req.headers.cookie ? 'presente' : 'ausente'
   });
 
   if (!req.isAuthenticated || !req.isAuthenticated()) {
@@ -122,7 +114,7 @@ router.get('/current-user', async (req, res) => {
   }
 });
 
-// Logout
+// CORREÇÃO 4: Logout melhorado
 router.post('/logout', (req, res) => {
   const userId = req.user?._id;
   console.log('👋 Logout solicitado:', { userId });
@@ -155,18 +147,16 @@ router.post('/logout', (req, res) => {
   });
 });
 
-// Status (para debug)
+// NOVA ROTA: Verificar status de autenticação (útil para debug)
 router.get('/status', (req, res) => {
   res.json({
     isAuthenticated: req.isAuthenticated?.() || false,
     hasSession: !!req.session,
     sessionID: req.sessionID,
-    sessionPassport: req.session?.passport,
     user: req.user ? {
       id: req.user._id,
       email: req.user.email
-    } : null,
-    cookies: req.headers.cookie
+    } : null
   });
 });
 
