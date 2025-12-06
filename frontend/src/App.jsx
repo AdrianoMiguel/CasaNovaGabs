@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import GiftList from './components/GiftList';
@@ -12,20 +11,18 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // CORREÇÃO iOS (VERSÃO MAIS ROBUSTA): Detecta URL Handoff e força reload.
+    // CORREÇÃO iOS: Detecta URL Handoff. 
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user_id');
     
+    // Se userId está presente, é a primeira renderização após o OAuth.
+    // Pulamos o checkAuth inicial que falha no iOS e definimos loading=false.
+    // Isso forçará a renderização de <Login />, que irá detectar o userId
+    // e executar o `window.location.reload()` necessário.
+    // É crucial NÃO limpar a URL nem chamar checkAuth() aqui.
     if (userId) {
-      console.log('✅ URL Handoff detectado (iOS), forçando reload...');
-      
-      // 1. Limpa o parâmetro user_id da URL.
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // 2. FORÇA O RELOAD IMEDIATO. Esta é a etapa CRÍTICA para o ITP.
-      window.location.reload(); 
-      
-      // O return é essencial para interromper a execução e não chamar checkAuth nesta rodada.
+      console.log('✅ URL Handoff detectado, pulando checkAuth inicial.');
+      setLoading(false);
       return;
     }
     
