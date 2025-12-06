@@ -1,10 +1,6 @@
-// frontend/src/services/api.js
-
 import axios from 'axios';
 
-// ATUALIZADO: Muda a URL base para usar o proxy do Vercel no mesmo domínio.
-// Isso resolve a falha de cookies SameSite/ITP no iOS e Desktop.
-const API_URL = '/api'; 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
